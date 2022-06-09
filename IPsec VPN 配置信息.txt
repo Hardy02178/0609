@@ -1,0 +1,255 @@
+
+! Microsoft Corporation
+! --------------------------------------------------------------------------------------------------------------------------------------------
+! Generic configuration templates
+!
+! DISCLAIMER : THIS IS A SAMPLE CONFIGURATION SCRIPT OFFERED BY MICROSOFT FOR YOUR 3RD PARTY DEVICE. IF YOU NEED 
+!			   HANDS-ON SUPPORT OR FURTHER ASSISTANCE, PLEASE CONTACT YOUR VENDOR DIRECTLY.
+!
+! This configuration template shows all the VPN configuration parameters associated with your S2S VPN connection.
+! The script you need to copy onto your Juniper ISG (ScreenOS-6.3+) to setup a RouteBased IKEv2 VPN Tunnel to Azure (no BGP) is found below [#11]
+! --------------------------------------------------------------------------------------------------------------------------------------------
+!
+! [1] Resource names
+!     Connection name: this field is the name of your connection resource
+!     Virtual network gateway name: the name of your Azure VPN gateway resource for the connection
+!     Local network gateway name: the name of your local network gateway resource for the connection
+
+/Data/CONNECTION_NAME = VNet1ToSite1
+/Data/VNG_NAME        = f9a60061-3445-44f5-8199-22f24221a3b9
+/Data/LNG_NAME        = Site1
+
+! [2] Public IP address of the Azure VPN gateway
+!     Active-Standby VPN gateway (single public IP address)
+
+/Data/VNG_GATEWAYIP   = 20.239.65.147
+
+!     Active-Active VPN gateway (2 public IP addresses)
+
+/Data/VNG_GATEWAYIPS/IpAddress/IP = 20.239.65.147
+
+! [3] Public IP address of the on-premises VPN device
+
+/Data/LNG_GATEWAYIP   = 115.236.146.52
+
+! [4] VNet address prefixes: a list of all VNet address prefixes in different formats
+
+
+/Data/VnetSubnets/Subnet/SP_NetworkIpRange = 10.233.0.0
+  SP_NetworkSubnetMask   = 255.255.255.0
+  SP_NetworkWildcardBits = 0.0.0.255
+  SP_NetworkCIDR         = 10.233.0.0/24
+  SP_TunnelName          = SP_TunnelName
+
+! [5] On-premises address prefixes: a list of all on-premises address prefixes defined in LNG
+
+
+/Data/OnPremiseSubnets/Subnet/SP_NetworkIpRange = 10.167.160.69
+  SP_NetworkSubnetMask   = 255.255.255.255
+  SP_NetworkWildcardBits = 0.0.0.0
+  SP_NetworkCIDR         = 10.167.160.69/32
+  SP_TunnelName          = SP_TunnelName
+
+! [6] Phase 1/Main Mode:
+!     IKE encryption algorithm
+!     IKE hashing algorithm
+!     IKE Diffie-Hellman group
+!     IKE SA lifetime (seconds)
+!     IKE SA data size (Kilobytes)
+
+/Data/IKE_ENCRYPTION_1 = aes256
+/Data/IKE_INTEGRITY_1  = sha2-256
+/Data/IKE_DHGROUP_1    = group2
+/Data/IKE_SALIFETIME_1 = 28800 
+
+! [7] Phase 2/Quick Mode:
+!     IPsec encryption algorithm
+!     IPsec hashing algorithm
+!     PFS Group (Perfect Forward Secrecy)
+!     IPsec SA (QMSA) lifetime (seconds)
+
+/Data/IPsec_ENCRYPTION_1 	= 3des
+/Data/IPsec_INTEGRITY_1  	= sha2-256
+/Data/IPsec_PFSGROUP_1   	= None
+/Data/IPsec_SALIFETIME   	= 3600
+
+! [8] Connection pre-shared key
+
+/Data/CONNECTION_PSK = Lotus@DLP2022
+
+! [9] BGP parameters - Azure VPN gateway
+!     Enable BGP
+!     BGP ASN for Azure VPN gateway
+!     BGP speaker IP address for the Azure VPN gateway
+!     BGP peer IP address(es)
+
+/Data/CONNECTION_BGP_ENABLED  = False
+/Data/VNG_ASN                 = VNG_ASN
+/Data/VNG_BGPIP               = VNG_BGPIP
+
+! [10] BGP parameters - on-premises network / LNG
+!      BGP ASN for the on-premises network
+!      BGP speaker IP address for the on-premises network
+
+/Data/LNG_ASN                = LNG_ASN
+/Data/LNG_BGPIP              = LNG_BGPIP
+
+! [11] Misc
+!      UsePolicyBasedTrafficSelectors
+
+/Data/USE_POLICYBASEDTS = False
+/Data/VpnMonitorIP		= 10.233.0.0
+
+!/* #################################################################################################################################
+! ==============================================================================
+! Example - JUNIPER ISG (6.3.x) in Active/Passive Azure GW Mode, and no BGP 
+! ==============================================================================
+!
+! !!! IMPORTANT: Search for "REPLACE" to find the values that require special considerations.
+!  
+! !!! (1) DEVICE/ZONE/INTERFACE MANAGEMENT: "trust-vr"/"Trust" as the trusted onpremises virtual router/Zone. "untrust-vr"/"Untrust" as the untrusted Azure virtual router/Zone.
+!
+!		* "ethernet0/0" : Untrust interface for AZURE	/   "tunnel.1" : Tunnel Interface bound to Eth0/0 for AZURE
+!						  Assigned the VPN public IP, which is also used as its gateway (having another gateway/Router/NAT device in front of your VPN hardware is unsupported)
+!						  NOTE: If you have a public address space assigned by your ISP for this WAN port, please REPLACE the host IP with the entire public IP block with its 
+!							    matching network prefix when defining this interface IP below.
+!
+!		* "ethernet0/2" : Untrust interface for AZURE	/    "bgroup0"  : Bgroup (bridge group) Interface bound to Eth0/2 for Onpremises.
+!					
+! !!! (2) FLOW AND ADDRESS MANAGEMENT FOR AZURE
+!
+! !!! (3) IKE AND IPSEC MANAGEMENT:
+!			1) Setting the Phase1 Lifetime to 8 hours. REPLACE as needed.
+!			2) Choosing "COMPATIBLE" Security Level for Auto-VPN. This is a compatible mode with AZURE.
+!			3) Setting the Phase2 values as: "esp aes256 sha2-256 hour 3". REPLACE as needed.
+!
+! !!! (4) IPSEC ACCESS MANAGEMENT.
+!
+! !!! (5) VPN MANAGEMENT: Using "COMPATIBLE" mode for AutoVPN. Recommended for AZURE.
+!
+! !!! (6) POLICY MANAGEMENT.
+! ####################################################################################################################################
+! SCRIPT STARTS BELOW. PLEASE MAKE SURE YOU ONLY COPY THE COMMAND LINES ONTO YOUR VPN CLI ! (REMOVE THE "!" everywhere you seem them below)
+
+! DEVICE MANAGEMENT */
+set vrouter trust-vr sharable
+set vrouter "untrust-vr"
+exit
+set vrouter "trust-vr"
+unset auto-route-export
+exit
+! /* ZONE MANAGEMENT */
+set zone "Trust" vrouter "trust-vr"
+set zone "Untrust" vrouter "trust-vr"
+set zone "Trust" tcp-rst 
+set zone "Untrust" block 
+unset zone "Untrust" tcp-rst 
+set zone "Untrust" screen tear-drop
+set zone "Untrust" screen syn-flood
+set zone "Untrust" screen ping-death
+set zone "Untrust" screen ip-filter-src
+set zone "Untrust" screen land
+! /* INTERFACE MANAGEMENT */
+set interface "ethernet0/0" zone "Untrust"
+set interface "bgroup0" zone "Trust"
+set interface "tunnel.1" zone "Untrust"
+set interface bgroup0 port ethernet0/2
+unset interface vlan1 ip
+set interface ethernet0/0 ip 115.236.146.52
+set interface ethernet0/0 route
+set interface bgroup0 ip 10.167.160.69/32
+set interface bgroup0 nat
+set interface tunnel.1 ip unnumbered interface bgroup0
+! /* Make sure that the below is the gateway IP set on your WAN/public interface connected to the Azure GW */
+set interface ethernet0/0 gateway 115.236.146.52
+! /*  SETTING AN MTU OF 1400 BYTES ON YOUR INTERFACES IS IMPORTANT FOR AZURE CONNECTIVITY */
+set interface ethernet0/0 mtu 1400
+set interface bgroup0 mtu 1400
+set interface tunnel.1 mtu 1400
+set interface "ethernet0/0" pmtu ipv4
+set interface "bgroup0" pmtu ipv4
+unset interface vlan1 bypass-others-ipsec
+unset interface vlan1 bypass-non-ip
+set interface ethernet0/0 manage-ip 115.236.146.52
+set interface ethernet0/0 ip manageable
+set interface bgroup0 ip manageable
+set interface ethernet0/0 manage ping
+set interface ethernet0/0 manage ssh
+set interface ethernet0/0 manage telnet
+set interface ethernet0/0 manage web
+set interface bgroup0 manage mtrace
+! /* FLOW MANAGEMENT (SETTING MSS= 1350 Bytes ) */
+set flow tcp-mss
+unset flow tcp-syn-check
+unset flow tcp-syn-bit-check
+set flow reverse-route clear-text prefer
+set flow reverse-route tunnel always
+set flow vpn-tcp-mss 1350
+! /* ADDRESS MANAGEMENT 
+!     Note: If you have more than one on-premises local network (as defined in your Azure Local Network Gatewa) and more than one VNet address space (as defined in your Azure Virtual Network Gateway), 
+!		    REPLACE/ADD them on top of what's below according. */
+set address "Trust" "Onpremises-Networks-1" 10.167.160.69 255.255.255.255  
+set address "Trust" "10.167.160.69/32" 10.167.160.69 255.255.255.255
+set address "Untrust" "Azure-Networks-1" 10.233.0.0 255.255.255.0
+set address "Untrust" "10.233.0.0/24" 10.233.0.0 255.255.255.0
+set crypto-policy
+exit
+! /* PHASE1 and PHASE2 MANAGEMENT. 
+!      REPLACE P1 AND P2 VALUES AS NEEDED */
+set ike p1-proposal "AZURE-P1_Proposal" preshare group2 esp aes256 sha2-256 hour 8
+set ike p2-proposal "AZURE-P2_Proposal" group2 esp aes256 sha2-256 hour 3 
+set ike gateway ikev2 "AZURE-GW" address 20.239.65.147 local-id "115.236.146.52" outgoing-interface "ethernet0/0" preshare Lotus@DLP2022 sec-level compatible 
+set ike gateway "AZURE-GW" dpd-liveness interval 10
+set ike respond-bad-spi 1
+set ike gateway ikev2 "AZURE-GW" auth-method self preshare peer preshare
+set ike ikev2 ike-sa-soft-lifetime 60
+unset ike ikeid-enumeration
+unset ike dos-protection
+! /* IPSEC ACCESS MANAGEMENT */
+unset ipsec access-session enable
+set ipsec access-session maximum 5000
+set ipsec access-session upper-threshold 0
+set ipsec access-session lower-threshold 0
+set ipsec access-session dead-p2-sa-timeout 0
+unset ipsec access-session log-error
+unset ipsec access-session info-exch-connected
+unset ipsec access-session use-error-log
+! /* VPN MANAGEMENT */
+set vpn "AZURE-VPN" gateway "AZURE-GW" no-replay tunnel idletime 0 sec-level compatible
+set vpn "AZURE-VPN" id 0x1 bind interface tunnel.1
+set vrouter "untrust-vr"
+exit
+set vrouter "trust-vr"
+exit
+set url protocol websense
+exit
+! /* SETTING PHASE PROXY ID's to 0/0 for both TSi (local network) and TSr (remote network) */
+set vpn "AZURE-VPN" proxy-id local-ip 0.0.0.0/0 remote-ip 0.0.0.0/0 "ANY" 
+! /* POLICY MANAGEMENT */
+! /* Note: The policies below are using an ANY (0/0) network to allow for dynamic routing across this tunnel.
+!		   REPLACE by actual address prefixes if necessary  */
+set policy id 5 from "Untrust" to "Trust"  "azure-networks-1" "onprem-networks-1" "ANY" permit log 
+set policy id 5
+set log session-init
+exit
+set policy id 4 from "Trust" to "Untrust"  "onprem-networks-1" "azure-networks-1" "ANY" permit log
+set policy id 4
+exit
+set policy id 3 from "Untrust" to "Trust"  "0.0.0.0/0" "0.0.0.0/0" "ANY" permit log
+set policy id 3
+exit
+set policy id 2 from "Trust" to "Untrust"  "0.0.0.0/0" "0.0.0.0/0" "ANY" permit log
+set policy id 2
+exit
+set policy id 1 from "Trust" to "Untrust"  "Any" "Any" "ANY" permit 
+set policy id 1
+exit
+! /* CREATING AN AZURE-ROUTE (WITH AZURE VNET SPACE) TOWARDS THE TUNNEL INTERFACE */
+unset add-default-route
+set route 10.233.0.0/24 interface tunnel.1   
+exit
+set vrouter "untrust-vr"
+exit
+set vrouter "trust-vr"
+exit
+
